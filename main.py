@@ -3,6 +3,7 @@ import time
 import math
 import numpy as np
 import torch
+import pdb
 import torch.nn as nn
 
 import data
@@ -66,6 +67,8 @@ parser.add_argument('--when', nargs="+", type=int, default=[-1],
                     help='When (which epochs) to divide the learning rate by 10 - accepts multiple')
 args = parser.parse_args()
 args.tied = True
+
+# pdb.set_trace()
 
 # Set the random seed manually for reproducibility.
 np.random.seed(args.seed)
