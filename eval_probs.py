@@ -76,14 +76,14 @@ if torch.cuda.is_available():
 # Load data
 ###############################################################################
 
-corpus = data.Corpus(args.data)
+corpus = data.Corpus(args.data, get_id=True)
 
 eval_batch_size = 10
 test_batch_size = 1
 train_data = batchify(corpus.train, args.batch_size, args)
 val_data = batchify(corpus.valid, eval_batch_size, args)
 test_data = batchify(corpus.test, test_batch_size, args)
-# pdb.set_trace()
+pdb.set_trace()
 
 ###############################################################################
 # Build the model
@@ -97,7 +97,7 @@ total_params = sum(x.size()[0] * x.size()[1] if len(x.size()) > 1 else x.size()[
 print('Args:', args)
 print('Model total parameters:', total_params)
 
-criterion = nn.CrossEntropyLoss()
+criterion = nn.CrossEntropyLoss(reduction='none')
 
 ###############################################################################
 # Training code
@@ -112,6 +112,7 @@ def evaluate(data_source, batch_size=10):
     hidden = model.init_hidden(batch_size)
     for i in range(0, data_source.size(0) - 1, args.bptt):
         data, targets = get_batch(data_source, i, args, evaluation=True)
+        pdb.set_trace()
         output, hidden = model(data, hidden, decode=True)
         output_flat = output.view(-1, ntokens)
         total_loss += len(data) * criterion(output_flat, targets).data
@@ -176,7 +177,7 @@ def train():
 
 # Load the best saved model.
 with open(args.save, 'rb') as f:
-    model, _, _ = torch.load(f)
+    model = torch.load(f)
 
 
 # Loop over epochs.

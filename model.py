@@ -65,7 +65,7 @@ class RNNModel(nn.Module):
         self.decoder.bias.data.fill_(0)
         self.decoder.weight.data.uniform_(-initrange, initrange)
 
-    def forward(self, input, hidden, return_h=False):
+    def forward(self, input, hidden, return_h=False, decode=False):
         emb = embedded_dropout(self.encoder, input, dropout=self.dropoute if self.training else 0)
         #emb = self.idrop(emb)
 
@@ -91,6 +91,10 @@ class RNNModel(nn.Module):
         outputs.append(output)
 
         result = output.view(output.size(0)*output.size(1), output.size(2))
+        if decode:
+            decoded = self.decoder(result)
+            result = decoded.view(output.size(0), output.size(1), decoded.size(1))
+
         if return_h:
             return result, hidden, raw_outputs, outputs
         return result, hidden

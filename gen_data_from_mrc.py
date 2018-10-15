@@ -6,8 +6,9 @@ import tqdm
 import unicodedata
 import pdb
 from collections import Counter
+import random
 
-test_mode=True
+test_mode=False
 parser = argparse.ArgumentParser()
 parser.add_argument('--data_path',type=str, default='../data/', help='dataset folder.')
 parser.add_argument('--dataset_name',type=str, default='squad')
@@ -51,6 +52,10 @@ else:
 output_names = ['train','valid','test']
 word_counter=Counter()
 nlp = spacy.load('en', disable=['vectors', 'textcat', 'tagger', 'ner', 'parser'])
+all_questions = []
+all_questions_tokened = []
+all_uids = []
+
 for part_name,out_name in zip(process_orders,output_names):
 	questions,uids = load_data(args.data_path+args.dataset_name+'/{}.json'.format(part_name))
 	# remove duplicates
@@ -65,7 +70,10 @@ for part_name,out_name in zip(process_orders,output_names):
 	print('after removing duplicates, len=',len(questions))
 
 	questions = [reform_text(question) for question in questions]
-	questions_tokened = nlp.pipe(questions, batch_size=10000, n_threads=32)
+	questions_tokened = [q_doc for q_doc in nlp.pipe(questions, batch_size=10000, n_threads=32)]
+	all_questions_tokened.append(questions_tokened)
+	all_questions.append(questions)
+	all_uids.append(uids)
 	for tokened in tqdm.tqdm(questions_tokened, total=len(questions)):
 		word_counter.update([normalize_text(w.text) for w in tokened if len(normalize_text(w.text)) > 0])
 vocab = sorted([w for w in word_counter], key=word_counter.get, reverse=True)
@@ -75,10 +83,16 @@ vocab = sorted([w for w in word_counter], key=word_counter.get, reverse=True)
 vocab=vocab[:10000]
         
 
-for part_name,out_name in zip(process_orders,output_names):
-	questions,uids = load_data(args.data_path+args.dataset_name+'/{}.json'.format(part_name))
-	questions = [reform_text(question) for question in questions]
-	questions_tokened = nlp.pipe(questions, batch_size=10000, n_threads=32)
+for part_name,out_name, questions, uids, questions_tokened in zip(process_orders,
+	output_names, all_questions, all_uids, all_questions_tokened):
+	random_order = [i for i in range(len(questions))]
+	random.shuffle(random_order)
+	uids = [uids[idx] for idx in random_order]
+	questions = [questions[idx] for idx in random_order]
+	questions_tokened = [questions_tokened[idx] for idx in random_order]
+	# pdb.set_trace()
+
+
 	add_str='_test' if test_mode else ''
 	fout_txt=open(args.output_path+args.dataset_name+add_str+'/{}.txt'.format(out_name),'w')
 	fout_uid=open(args.output_path+args.dataset_name+add_str+'/{}_id.txt'.format(out_name),'w')
