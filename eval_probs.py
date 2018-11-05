@@ -6,15 +6,20 @@ import numpy as np
 np.random.seed(331)
 import torch
 import torch.nn as nn
+from collections import defaultdict
+import json
 
 import data
 import model
 
-from utils import batchify, get_batch, repackage_hidden
+from utils import batchify, get_batch, repackage_hidden, get_ids
 
 parser = argparse.ArgumentParser(description='PyTorch PennTreeBank RNN/LSTM Language Model')
-parser.add_argument('--data', type=str, default='data/penn/',
+parser.add_argument('--data', type=str, default='data/marco',
                     help='location of the data corpus')
+parser.add_argument('--original_data', type=str, default='data/squad',
+                    help='location of the original training data corpus')
+parser.add_argument('--burn_in', type=int, default=5, help='run this amount before start evaluation.')
 parser.add_argument('--model', type=str, default='LSTM',
                     help='type of recurrent net (RNN_TANH, RNN_RELU, LSTM, GRU)')
 parser.add_argument('--emsize', type=int, default=400,
@@ -62,6 +67,7 @@ parser.add_argument('--beta', type=float, default=1,
                     help='beta slowness regularization applied on RNN activiation (beta = 0 means no regularization)')
 parser.add_argument('--wdecay', type=float, default=1.2e-6,
                     help='weight decay applied to all weights')
+parser.add_argument('--save_name', type=str, default='m_m', help='string for saving. originalData_evaluateData')
 args = parser.parse_args()
 
 # Set the random seed manually for reproducibility.
@@ -76,14 +82,34 @@ if torch.cuda.is_available():
 # Load data
 ###############################################################################
 
-corpus = data.Corpus(args.data, get_id=True)
+import os
+import hashlib
+fn = 'corpus.{}.data'.format(hashlib.md5(args.original_data.encode()).hexdigest())
+# print(args.original_data)
+# input(fn)
+if os.path.exists(fn):
+    print('Loading cached original dataset...')
+    corpus = torch.load(fn)
+    dictionary = corpus.dictionary
+else:
+    input('Producing a new dataset. Maybe something is wrong?')
+    corpus = data.Corpus(args.original_data)
+    torch.save(corpus, fn)
+    dictionary = corpus.dictionary
+
+if '<unk>' not in dictionary.word2idx:
+    print('using temp fix: <unk> -> 0')
+    dictionary.word2idx['<unk>']=0
+
+corpus = data.RefinedCorpus(args.data, dictionary, args.batch_size, args)
+
 
 eval_batch_size = 10
 test_batch_size = 1
-train_data = batchify(corpus.train, args.batch_size, args)
-val_data = batchify(corpus.valid, eval_batch_size, args)
-test_data = batchify(corpus.test, test_batch_size, args)
-pdb.set_trace()
+train_data, train_uids = corpus.train, corpus.train_uids
+val_data, valid_uids = corpus.valid, corpus.valid_uids
+test_data, test_uids = corpus.test, corpus.test_uids
+# pdb.set_trace()
 
 ###############################################################################
 # Build the model
@@ -103,136 +129,67 @@ criterion = nn.CrossEntropyLoss(reduction='none')
 # Training code
 ###############################################################################
 
-def evaluate(data_source, batch_size=10):
+def evaluate_sents(data_source, uids, batch_size=10):
     # Turn on evaluation mode which disables dropout.
     if args.model == 'QRNN': model.reset()
     model.eval()
     total_loss = 0
     ntokens = len(corpus.dictionary)
     hidden = model.init_hidden(batch_size)
+    sent_loss = defaultdict(list)
     for i in range(0, data_source.size(0) - 1, args.bptt):
+        data_batch = torch.load(open('test.pickle','rb'))
+        data_test=data_batch['data']
+        targets_test = data_batch['targets']
         data, targets = get_batch(data_source, i, args, evaluation=True)
-        pdb.set_trace()
+        batch_uids = get_ids(uids, i, args, evaluation=True)
+        # pdb.set_trace()
         output, hidden = model(data, hidden, decode=True)
         output_flat = output.view(-1, ntokens)
-        total_loss += len(data) * criterion(output_flat, targets).data
+        per_word_loss = criterion(output_flat, targets)
+        batch_uids_list = batch_uids.reshape(-1).tolist()
+        loss_list = per_word_loss.tolist()
+        for loss, uid in zip(loss_list, batch_uids_list):
+            sent_loss[uid].append(loss)
+        incre = (torch.mean(per_word_loss).item()*len(data))
+        total_loss += incre
+        # print('incre=',incre)
         hidden = repackage_hidden(hidden)
-    return total_loss[0] / len(data_source)
+        # pdb.set_trace()
+    avg_sent_loss = {}
+    for (uid, losses) in sent_loss.items():
+        avg_sent_loss[uid]=float(np.mean(losses))
+    # pdb.set_trace()
+    return total_loss / len(data_source), avg_sent_loss
 
-
-def train():
-    # Turn on training mode which enables dropout.
-    if args.model == 'QRNN': model.reset()
-    total_loss = 0
-    start_time = time.time()
-    ntokens = len(corpus.dictionary)
-    hidden = model.init_hidden(args.batch_size)
-    batch, i = 0, 0
-    while i < train_data.size(0) - 1 - 1:
-        bptt = args.bptt if np.random.random() < 0.95 else args.bptt / 2.
-        # Prevent excessively small or negative sequence lengths
-        seq_len = max(5, int(np.random.normal(bptt, 5)))
-        # There's a very small chance that it could select a very long sequence length resulting in OOM
-        seq_len = min(seq_len, args.bptt + 10)
-
-        lr2 = optimizer.param_groups[0]['lr']
-        optimizer.param_groups[0]['lr'] = lr2 * seq_len / args.bptt
-        model.train()
-        data, targets = get_batch(train_data, i, args, seq_len=seq_len)
-
-        # Starting each batch, we detach the hidden state from how it was previously produced.
-        # If we didn't, the model would try backpropagating all the way to start of the dataset.
-        hidden = repackage_hidden(hidden)
-        optimizer.zero_grad()
-
-        output, hidden, rnn_hs, dropped_rnn_hs = model(data, hidden, return_h=True, decode=True)
-        raw_loss = criterion(output.view(-1, ntokens), targets)
-
-        loss = raw_loss
-        # Activiation Regularization
-        loss = loss + sum(args.alpha * dropped_rnn_h.pow(2).mean() for dropped_rnn_h in dropped_rnn_hs[-1:])
-        # Temporal Activation Regularization (slowness)
-        loss = loss + sum(args.beta * (rnn_h[1:] - rnn_h[:-1]).pow(2).mean() for rnn_h in rnn_hs[-1:])
-        loss.backward()
-
-        # `clip_grad_norm` helps prevent the exploding gradient problem in RNNs / LSTMs.
-        torch.nn.utils.clip_grad_norm(model.parameters(), args.clip)
-        optimizer.step()
-
-        total_loss += raw_loss.data
-        optimizer.param_groups[0]['lr'] = lr2
-        if batch % args.log_interval == 0 and batch > 0:
-            cur_loss = total_loss[0] / args.log_interval
-            elapsed = time.time() - start_time
-            print('| epoch {:3d} | {:5d}/{:5d} batches | lr {:02.2f} | ms/batch {:5.2f} | '
-                    'loss {:5.2f} | ppl {:8.2f}'.format(
-                epoch, batch, len(train_data) // args.bptt, optimizer.param_groups[0]['lr'],
-                elapsed * 1000 / args.log_interval, cur_loss, math.exp(cur_loss)))
-            total_loss = 0
-            start_time = time.time()
-        ###
-        batch += 1
-        i += seq_len
 
 
 # Load the best saved model.
 with open(args.save, 'rb') as f:
-    model = torch.load(f)
+    try:
+        model, _, _ = torch.load(f)
+    except:
+        model = torch.load(f)
+        print('loaded without loss and opt.')
 
 
 # Loop over epochs.
 lr = args.lr
-stored_loss = evaluate(val_data)
-best_val_loss = []
-# At any point you can hit Ctrl + C to break out of training early.
-try:
-    #optimizer = torch.optim.ASGD(model.parameters(), lr=args.lr, weight_decay=args.wdecay)
-    optimizer = torch.optim.ASGD(model.parameters(), lr=args.lr, t0=0, lambd=0., weight_decay=args.wdecay)
-    for epoch in range(1, args.epochs+1):
-        epoch_start_time = time.time()
-        train()
-        if 't0' in optimizer.param_groups[0]:
-            tmp = {}
-            for prm in model.parameters():
-                tmp[prm] = prm.data.clone()
-                prm.data = optimizer.state[prm]['ax'].clone()
+# eval_loss, avg_sent_loss = evaluate_sents(val_data, valid_uids, batch_size = 10)
+# print('valid loss {:5.2f} | valid ppl {:8.2f}'.format(eval_loss, math.exp(eval_loss)))
 
-            val_loss2 = evaluate(val_data)
-            print('-' * 89)
-            print('| end of epoch {:3d} | time: {:5.2f}s | valid loss {:5.2f} | '
-                    'valid ppl {:8.2f}'.format(epoch, (time.time() - epoch_start_time),
-                                               val_loss2, math.exp(val_loss2)))
-            print('-' * 89)
+train_loss, avg_sent_loss = evaluate_sents(train_data, train_uids, batch_size = 10)
+print('train loss {:5.2f} | train ppl {:8.2f}'.format(train_loss, math.exp(train_loss)))
 
-            if val_loss2 < stored_loss:
-                with open(args.save, 'wb') as f:
-                    torch.save(model, f)
-                print('Saving Averaged!')
-                stored_loss = val_loss2
 
-            for prm in model.parameters():
-                prm.data = tmp[prm].clone()
+json.dump(avg_sent_loss,open('lm_scores_{}.json'.format(args.save_name),'w'))
+for uid, sent in corpus.train_dict.items():
+    if 'burnin' in uid:
+        continue
+    print('{}\t{}'.format(sent, avg_sent_loss[uid]))
+    pdb.set_trace()
 
-        if (len(best_val_loss)>args.nonmono and val_loss2 > min(best_val_loss[:-args.nonmono])):
-            print('Done!')
-            # import sys
-            # sys.exit(1)
-            break
-            optimizer = torch.optim.ASGD(model.parameters(), lr=args.lr, t0=0, lambd=0., weight_decay=args.wdecay)
-            # optimizer.param_groups[0]['lr'] /= 2.
-        best_val_loss.append(val_loss2)
 
-except KeyboardInterrupt:
-    print('-' * 89)
-    print('Exiting from training early')
 
-# Load the best saved model.
-with open(args.save, 'rb') as f:
-    model = torch.load(f)
-    
-# Run on test data.
-test_loss = evaluate(test_data, test_batch_size)
-print('=' * 89)
-print('| End of training | test loss {:5.2f} | test ppl {:8.2f}'.format(
-    test_loss, math.exp(test_loss)))
-print('=' * 89)
+
+

@@ -95,6 +95,8 @@ def model_load(fn):
 import os
 import hashlib
 fn = 'corpus.{}.data'.format(hashlib.md5(args.data.encode()).hexdigest())
+# print(args.data)
+# input(fn)
 if os.path.exists(fn):
     print('Loading cached dataset...')
     corpus = torch.load(fn)
@@ -165,6 +167,7 @@ def evaluate(data_source, batch_size=10):
     hidden = model.init_hidden(batch_size)
     for i in range(0, data_source.size(0) - 1, args.bptt):
         data, targets = get_batch(data_source, i, args, evaluation=True)
+        # pdb.set_trace()
         output, hidden = model(data, hidden)
         total_loss += len(data) * criterion(model.decoder.weight, model.decoder.bias, output, targets).data
         hidden = repackage_hidden(hidden)
@@ -190,7 +193,7 @@ def train():
         optimizer.param_groups[0]['lr'] = lr2 * seq_len / args.bptt
         model.train()
         data, targets = get_batch(train_data, i, args, seq_len=seq_len)
-
+        # pdb.set_trace()
         # Starting each batch, we detach the hidden state from how it was previously produced.
         # If we didn't, the model would try backpropagating all the way to start of the dataset.
         hidden = repackage_hidden(hidden)

@@ -1,3 +1,3 @@
-CUDA_VISIBLE_DEVICES=2 python main.py --batch_size 20 --data data/marco --dropouti 0.4 --dropouth 0.25 --seed 1023 --epoch 600 --save marco_1.pt
-CUDA_VISIBLE_DEVICES=2 python finetune.py --batch_size 20 --data data/marco --dropouti 0.4 --dropouth 0.25 --seed 1023 --epoch 600 --save marco_1.pt
+CUDA_VISIBLE_DEVICES=3 python main.py --batch_size 20 --data data/marco --dropouti 0.4 --dropouth 0.25 --seed 1023 --epoch 600 --save marco_1.pt
+CUDA_VISIBLE_DEVICES=3 python finetune.py --batch_size 20 --data data/marco --dropouti 0.4 --dropouth 0.25 --seed 1023 --epoch 600 --save marco_1.pt
 # CUDA_VISIBLE_DEVICES=3 python pointer.py --data data/marco --save marco_1.pt --lambdasm 0.1 --theta 1.0 --window 500 --bptt 5000

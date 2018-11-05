@@ -112,10 +112,15 @@ def evaluate(data_source, batch_size=10):
     hidden = model.init_hidden(batch_size)
     for i in range(0, data_source.size(0) - 1, args.bptt):
         data, targets = get_batch(data_source, i, args, evaluation=True)
+        torch.save({'data':data,'targets':targets},open('test.pickle','wb'))
+        # pdb.set_trace()
         output, hidden = model(data, hidden, decode=True)
         output_flat = output.view(-1, ntokens)
-        total_loss += len(data) * criterion(output_flat, targets).data
+        incre = len(data) * criterion(output_flat, targets).data
+        total_loss += incre
+        # print('loss=',incre)
         hidden = repackage_hidden(hidden)
+        # pdb.set_trace()
     return total_loss[0] / len(data_source)
 
 
@@ -176,12 +181,16 @@ def train():
 
 # Load the best saved model.
 with open(args.save, 'rb') as f:
-    model, _, _ = torch.load(f)
+    try:
+        model, _, _ = torch.load(f)
+    except:
+        model = torch.load(f)
 
 
 # Loop over epochs.
 lr = args.lr
 stored_loss = evaluate(val_data)
+# pdb.set_trace()
 best_val_loss = []
 # At any point you can hit Ctrl + C to break out of training early.
 try:
@@ -227,7 +236,11 @@ except KeyboardInterrupt:
 
 # Load the best saved model.
 with open(args.save, 'rb') as f:
-    model = torch.load(f)
+    try:
+        model, _, _ = torch.load(f)
+    except:
+        model = torch.load(f)
+        
     
 # Run on test data.
 test_loss = evaluate(test_data, test_batch_size)

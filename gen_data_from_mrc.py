@@ -7,6 +7,7 @@ import unicodedata
 import pdb
 from collections import Counter
 import random
+import string
 
 test_mode=False
 parser = argparse.ArgumentParser()
@@ -16,7 +17,10 @@ parser.add_argument('--output_path', type=str, default='data/')
 args = parser.parse_args()
 
 def normalize_text(text):
+	# try:
 	return unicodedata.normalize('NFD', text)
+	# except:
+		# pdb.set_trace()
 def space_extend(matchobj):
     return ' ' + matchobj.group(0) + ' '
 def reform_text(text):
@@ -75,13 +79,17 @@ for part_name,out_name in zip(process_orders,output_names):
 	all_questions.append(questions)
 	all_uids.append(uids)
 	for tokened in tqdm.tqdm(questions_tokened, total=len(questions)):
-		word_counter.update([normalize_text(w.text) for w in tokened if len(normalize_text(w.text)) > 0])
+		# pdb.set_trace()
+		word_counter.update([normalize_text(w.lower_) for w in tokened if len(normalize_text(w.lower_)) > 0])
 vocab = sorted([w for w in word_counter], key=word_counter.get, reverse=True)
-# print('size of vocab:',len(vocab))
-# print('appear more than 10 times:', len([w for w in word_counter if word_counter.get(w)>=10]))
+print('size of vocab:',len(vocab))
+print('appear more than 10 times:', len([w for w in word_counter if word_counter.get(w)>=10]))
 # pdb.set_trace()
-vocab=vocab[:10000]
-        
+try:
+	vocab=vocab[:10000]
+except:
+	pdb.set_trace()
+
 
 for part_name,out_name, questions, uids, questions_tokened in zip(process_orders,
 	output_names, all_questions, all_uids, all_questions_tokened):
@@ -94,14 +102,22 @@ for part_name,out_name, questions, uids, questions_tokened in zip(process_orders
 
 
 	add_str='_test' if test_mode else ''
-	fout_txt=open(args.output_path+args.dataset_name+add_str+'/{}.txt'.format(out_name),'w')
-	fout_uid=open(args.output_path+args.dataset_name+add_str+'/{}_id.txt'.format(out_name),'w')
+	fout_txt=open(args.output_path+args.dataset_name+add_str+'/{}.txt'.format(out_name),'w', encoding='utf-8')
+	fout_uid=open(args.output_path+args.dataset_name+add_str+'/{}_id.txt'.format(out_name),'w', encoding='utf-8')
+	nonpunc_count=0
 	for tokened,uid in tqdm.tqdm(zip(questions_tokened, uids), total=len(questions)):
-		question_text = [normalize_text(w.text) for w in tokened if len(normalize_text(w.text)) > 0]
-		question_text = ' '.join([w if w in vocab else '<unk>' for w in question_text])
+		question_text = [normalize_text(w.lower_) for w in tokened if len(normalize_text(w.lower_)) > 0]
+		question_text = [w if w in vocab else '<unk>' for w in question_text]
+		if question_text[-1] not in string.punctuation:
+			if args.dataset_name=='marco':
+				question_text.append('?')
+			# else:
+			nonpunc_count+=1
+				# print('not ending with punctuation:text=',' '.join(question_text))
+		question_text = ' '.join(question_text)
 		fout_txt.write('{}\n'.format(question_text))
 		fout_uid.write('{}\n'.format(uid))
-			
+	print('nonpunc_count:',nonpunc_count)
 	
 
 

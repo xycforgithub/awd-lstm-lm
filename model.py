@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import pdb
 
 from embed_regularize import embedded_dropout
 from locked_dropout import LockedDropout
@@ -70,6 +71,7 @@ class RNNModel(nn.Module):
         #emb = self.idrop(emb)
 
         emb = self.lockdrop(emb, self.dropouti)
+        # pdb.set_trace()
 
         raw_output = emb
         new_hidden = []
