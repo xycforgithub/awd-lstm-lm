@@ -1,0 +1,3 @@
+CUDA_VISIBLE_DEVICES=0 PYTHONUNBUFFERED=x python main.py --batch_size 20 --data data/newsqa --dropouti 0.4 --dropouth 0.25 --seed 1023 --epoch 600 --save newsqa_1.pt | tee res_newsqa_1_main.txt
+CUDA_VISIBLE_DEVICES=0 PYTHONUNBUFFERED=x python finetune.py --batch_size 20 --data data/newsqa --dropouti 0.4 --dropouth 0.25 --seed 1023 --epoch 600 --save newsqa_1.pt | tee res_newsqa_1_fine.txt
+# CUDA_VISIBLE_DEVICES=1 python pointer.py --data data/squad --save squad_1_test.pt --lambdasm 0.1 --theta 1.0 --window 500 --bptt 5000
