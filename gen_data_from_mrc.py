@@ -62,6 +62,7 @@ all_uids = []
 
 for part_name,out_name in zip(process_orders,output_names):
 	questions,uids = load_data(args.data_path+args.dataset_name+'/{}.json'.format(part_name))
+	print('before removing duplicates:',len(questions))
 	# remove duplicates
 	id_map = {}
 	for uid,question in zip(uids,questions):
@@ -72,6 +73,7 @@ for part_name,out_name in zip(process_orders,output_names):
 		uids.append(uid)
 		questions.append(question)
 	print('after removing duplicates, len=',len(questions))
+	# pdb.set_trace()
 
 	questions = [reform_text(question) for question in questions]
 	questions_tokened = [q_doc for q_doc in nlp.pipe(questions, batch_size=10000, n_threads=32)]
@@ -84,7 +86,7 @@ for part_name,out_name in zip(process_orders,output_names):
 vocab = sorted([w for w in word_counter], key=word_counter.get, reverse=True)
 print('size of vocab:',len(vocab))
 print('appear more than 10 times:', len([w for w in word_counter if word_counter.get(w)>=10]))
-# pdb.set_trace()
+pdb.set_trace()
 try:
 	vocab=vocab[:10000]
 except:

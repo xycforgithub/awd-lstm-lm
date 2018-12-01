@@ -2,23 +2,43 @@ import pdb
 import json
 from math import log
 from collections import Counter
+import tqdm
+import argparse
 
+parser = argparse.ArgumentParser()
+parser.add_argument('--out_dataset_name', type=str, default='newsqa',
+                    help='out domain dataset name. in domain is always squad.')
+parser.add_argument('--normalize_lm_score', action='store_true', help='normalize lm score.')
+parser.add_argument('--out_score_on', action='store_true', help='include scores from out domain.')
+args = parser.parse_args()
 
 test_mode = False
+out_dataset_name = args.out_dataset_name
 # lm scores
-in_domain_score_f = 'lm_scores_s_m.json'
-out_domain_score_f = 'lm_scores_m_m.json'
+if out_dataset_name=='newsqa':
+	in_domain_score_f = 'lm_scores_s_n.json'
+	out_domain_score_f = 'lm_scores_n_n.json'
+else:
+	in_domain_score_f = 'lm_scores_s_m.json'
+	out_domain_score_f = 'lm_scores_m_m.json'
 in_data_path = '../data/multitask/san_addmarco_quefea/squad_train.json'
-out_data_path = '../data/multitask/san_addmarco_quefea/marco_train.json'
+out_data_path = '../data/multitask/san_addmarco_quefea/{}_train.json'.format(out_dataset_name)
+out_gold_path = '../data/{}/train.json'.format(out_dataset_name)
 answer_score_on = True
 lm_score_on = True
-output_name = 'score_marco'
+normalize_lm_score = args.normalize_lm_score
+out_score_on = args.out_score_on
+output_name = 'score_{}'.format(out_dataset_name)
 
 if answer_score_on:
 	output_name+='_a'
 if lm_score_on:
 	output_name+='_l'
-output_name +='.json'
+if normalize_lm_score:
+	output_name +='_norm'
+if not out_score_on:
+	output_name +='_inonly'
+# output_name +='.json'
 
 def load_gold_data(path, is_train=True):
 	questions = []
@@ -32,7 +52,7 @@ def load_gold_data(path, is_train=True):
 			cnt += 1
 			for qa in paragraph['qas']:
 				uid, question = qa['id'], qa['question']
-				answer = qa.get('answers', [])
+				answer = [a['text'] for a in qa.get('answers', [])]
 				questions.append(question)
 				answers.append(answer)
 				uids.append(uid)
@@ -40,7 +60,8 @@ def load_gold_data(path, is_train=True):
 		print('using only first 200 data.')
 		questions=questions[:200]
 		uids=uids[:200]
-	return questions,uids, answers
+	q_dict = {str(uid):{'question':q, 'answer':a} for uid,q,a in zip(uids,questions,answers)}
+	return q_dict
 
 def load(path, is_train=True):
 	with open(path, 'r', encoding='utf-8') as reader:
@@ -68,6 +89,18 @@ def load(path, is_train=True):
 in_score = json.load(open(in_domain_score_f))
 out_score = json.load(open(out_domain_score_f))
 
+if normalize_lm_score:
+	def norm_score(scores):
+		min_score = min([v for v in scores.values()])
+		max_score = max([v for v in scores.values()])
+		for k,v in scores.items():
+			scores[k]=(v-min_score)/(max_score-min_score)
+		return scores
+	in_score=norm_score(in_score)
+	out_score = norm_score(out_score)
+		
+
+
 in_data = load(in_data_path)
 out_data = load(out_data_path)
 
@@ -83,8 +116,9 @@ for k in freq_out:
 	if k not in freq_in:
 		freq_in[k]=1/len(all_lengths_s)
 
-pdb.set_trace()
+# pdb.set_trace()
 final_scores = {}
+q_dict = load_gold_data(out_gold_path)
 
 for sample in out_data:
 	this_score = 0
@@ -93,11 +127,15 @@ for sample in out_data:
 		out_answer_score = -log(freq_out[sample['end']-sample['start']+1])
 	except:
 		pdb.set_trace()
-	answer_score = in_answer_score - out_answer_score
 	sample['uid']=str(sample['uid'])
 	in_lm_score = in_score[sample['uid']]
 	out_lm_score = out_score[sample['uid']]
-	lm_score = in_lm_score - out_answer_score
+	if not out_score_on:
+		lm_score = in_lm_score
+		answer_score = in_answer_score
+	else:
+		lm_score = in_lm_score - out_lm_score
+		answer_score = in_answer_score - out_answer_score
 
 	if answer_score_on:
 		this_score+=answer_score
@@ -108,12 +146,20 @@ for sample in out_data:
 	'lm_score':lm_score,
 	'overall_score':this_score
 	}
+	k=sample['uid']
+	# print('question:',q_dict[k]['question'],'answers:',q_dict[k]['answer'],
+	# 	'lm_score:',final_scores[k]['lm_score'],'answer_score:',final_scores[k]['answer_score'],
+	# 	'in_lm_score:',in_lm_score,'out_lm_score:',out_lm_score)
+	# pdb.set_trace()
 
 dataset_scores = {'marco':final_scores}
 
 json.dump(final_scores, open(output_name+'.json','w'))
 
 print('finish')
-
-
+pdb.set_trace()
+for k in final_scores:
+	print('question:',q_dict[k]['question'],'answers:',q_dict[k]['answer'],
+		'lm_score:',final_scores[k]['lm_score'],'answer_score:',final_scores[k]['answer_score'])
+	input()
 
