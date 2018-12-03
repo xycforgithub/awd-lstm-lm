@@ -10,6 +10,7 @@ parser.add_argument('--out_dataset_name', type=str, default='newsqa',
                     help='out domain dataset name. in domain is always squad.')
 parser.add_argument('--normalize_lm_score', action='store_true', help='normalize lm score.')
 parser.add_argument('--out_score_on', action='store_true', help='include scores from out domain.')
+parser.add_argument('--norm_score_sp', action='store_true', help='normalize lm score, but only for out domain.')
 args = parser.parse_args()
 
 test_mode = False
@@ -27,6 +28,7 @@ out_gold_path = '../data/{}/train.json'.format(out_dataset_name)
 answer_score_on = True
 lm_score_on = True
 normalize_lm_score = args.normalize_lm_score
+norm_score_sp = args.norm_score_sp
 out_score_on = args.out_score_on
 output_name = 'score_{}'.format(out_dataset_name)
 
@@ -36,8 +38,12 @@ if lm_score_on:
 	output_name+='_l'
 if normalize_lm_score:
 	output_name +='_norm'
+if norm_score_sp:
+	output_name +='_normsp'
 if not out_score_on:
 	output_name +='_inonly'
+
+
 # output_name +='.json'
 
 def load_gold_data(path, is_train=True):
@@ -89,14 +95,15 @@ def load(path, is_train=True):
 in_score = json.load(open(in_domain_score_f))
 out_score = json.load(open(out_domain_score_f))
 
-if normalize_lm_score:
+if normalize_lm_score or norm_score_sp:
 	def norm_score(scores):
 		min_score = min([v for v in scores.values()])
 		max_score = max([v for v in scores.values()])
 		for k,v in scores.items():
 			scores[k]=(v-min_score)/(max_score-min_score)
 		return scores
-	in_score=norm_score(in_score)
+	if normalize_lm_score:
+		in_score=norm_score(in_score)
 	out_score = norm_score(out_score)
 		
 
