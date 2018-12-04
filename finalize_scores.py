@@ -5,7 +5,7 @@ import numpy as np
 import tqdm
 
 dataset_names = ['newsqa','marco']
-suffix = '' # '', '_norm','_inonly' 
+suffix = '_normb2' # '', '_norm','_inonly','_normsp', '_normb2'
 all_score_forms = ['sum','lm','ans']
 output_tag = 'nm'
 
@@ -49,6 +49,7 @@ for form in all_score_forms:
 	max_score = -100
 	for dataset_name in dataset_names:
 		for v in all_scores[dataset_name].values():
+			assert np.abs(v['overall_score']-v['answer_score']-v['lm_score'])<0.001
 			min_score=min(min_score,v[input_tag])
 			max_score = max(max_score, v[input_tag])
 	print('min_score=',min_score,'max_score=',max_score)
@@ -59,7 +60,12 @@ for form in all_score_forms:
 		this_scores = {}
 		this_scores_list = []
 		for k,v in all_scores[dataset_name].items():
+			# if form=='sum':
+			if v[input_tag]>100:
+				pdb.set_trace()
 			new_v = 1-(v[input_tag]-min_score)/(max_score-min_score)
+			# else:
+			# 	new_v = v[input_tag]
 			this_scores[k]=new_v
 			all_out_scores_list.append(new_v)
 			this_scores_list.append(new_v)
@@ -73,35 +79,60 @@ for form in all_score_forms:
 		temp_score=np.minimum(all_out_scores_list/val,1)
 		print(val,'avg:',np.mean(temp_score))
 	
-	if form=='lm':
-		q_dict={}
-		for dataset_name in dataset_names:
-			out_gold_path='../data/{}/train.json'.format(dataset_name)
-			q_dict[dataset_name] = load_gold_data(out_gold_path)
-		special_count=0
-		nonsp_count=0
-		special_sum=0.0
-		nonsp_sum=0.0
+	# if form=='lm':
+	q_dict={}
+	for dataset_name in dataset_names:
+		out_gold_path='../data/{}/train.json'.format(dataset_name)
+		q_dict[dataset_name] = load_gold_data(out_gold_path)
+	special_count=0
+	nonsp_count=0
+	special_sum=0.0
+	nonsp_sum=0.0
 
-		for dataset_name in q_dict:
-			for k in q_dict[dataset_name]:
-				try:
-					if q_dict[dataset_name][k]['question'].split(' ')[0].lower() in ['what','where','who','why','how','which','when','whose','whom']:
-						special_count+=1
-						special_sum+=out_scores[dataset_name][k]
-					else:
-						nonsp_count+=1
-						nonsp_sum+=out_scores[dataset_name][k]
-				except:
-					if k not in out_scores[dataset_name]:
-						pass
-					else:
-						pdb.set_trace()
-			# print('question:',q_dict[k]['question'],'answers:',q_dict[k]['answer'],
-				# 'lm_score:',lm_scores[k],'answer_score:',ans_scores[k],'sum_scores:',sum_scores[k])
-			# input()
-		print('special_count:',special_count,'special avg:',special_sum/special_count)
-		print('nonsp_count:',nonsp_count,'nonsp avg:',nonsp_sum/nonsp_count)
+	# for dataset_name in q_dict:
+	for dataset_name in ['marco']:
+		for k in q_dict[dataset_name]:
+			try:
+				# if q_dict[dataset_name][k]['question'].split(' ')[0].lower() in ['what','where','who','why','how','which','when','whose','whom']:
+				if q_dict[dataset_name][k]['question'].split(' ')[0].lower() in ['when','where']:
+					special_count+=1
+					special_sum+=out_scores[dataset_name][k]
+				else:
+					nonsp_count+=1
+					nonsp_sum+=out_scores[dataset_name][k]
+			except:
+				if k not in out_scores[dataset_name]:
+					pass
+				else:
+					pdb.set_trace()
+		# print('question:',q_dict[k]['question'],'answers:',q_dict[k]['answer'],
+			# 'lm_score:',lm_scores[k],'answer_score:',ans_scores[k],'sum_scores:',sum_scores[k])
+		# input()
+	print('special_count:',special_count,'special avg:',special_sum/special_count)
+	print('nonsp_count:',nonsp_count,'nonsp avg:',nonsp_sum/nonsp_count)
+	# pdb.set_trace()
+
+	# if form=='sum':
+	# 	norm_scores_lm = json.load(open(output_name.replace('sum','lm')))
+	# 	norm_scores_ans = json.load(open(output_name.replace('sum','ans')))
+
+	# 	dataset_name='marco'
+	# 	print('mean ans:',np.mean([v for v in norm_scores_ans[dataset_name].values()]))
+	# 	print('mean lm:',np.mean([v for v in norm_scores_lm[dataset_name].values()]))
+	# 	input()
+	# 	for k in q_dict[dataset_name]:
+
+	# 		try:
+	# 			print('Q:',q_dict[dataset_name][k]['question'],'A:',q_dict[dataset_name][k]['answer'])
+	# 			print('sum score:',out_scores[dataset_name][k],'lm:',norm_scores_lm[dataset_name][k],
+	# 				'ans:',norm_scores_ans[dataset_name][k])
+	# 			if out_scores[dataset_name][k]<=0.5 or out_scores[dataset_name][k]>=0.8:
+	# 				input()
+	# 		except:
+	# 			if k not in out_scores[dataset_name]:
+	# 				pass
+	# 			else:
+	# 				pdb.set_trace()		
 
 
 
